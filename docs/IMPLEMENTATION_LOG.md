@@ -2,6 +2,47 @@
 
 ---
 
+## Worker API + PIN Gate Re-Architecture - 2026-05-04
+
+**Implemented by:** Codex
+**Files modified:** `index.html`, `README.md`, `docs/LIVE_DEPLOY_PLAN.md`, `docs/IMPLEMENTATION_LOG.md`, `supabase/migrations/002_allow_worker_owned_tasks.sql`, `worker/wrangler.toml`, `worker/src/index.js`
+
+### What Changed
+
+- Removed frontend Supabase Auth and magic-link UI.
+- Removed direct frontend Supabase JS import and direct table calls.
+- Added Cloudflare Worker API as the secure data layer.
+- Added Worker PIN validation through `X-War-Room-Pin`.
+- Added Worker endpoints for health, listing tasks, create/update/delete, archive/restore, and bulk import.
+- Moved privileged Supabase access to Worker secrets.
+- Kept localStorage cache/fallback and first-run import behavior.
+- Kept the existing War Room task UX: Tasks, Order, Archived, archive toast with Undo, theme collapse, quick add, comments, and inline priority editing.
+
+### Supabase
+
+- Added migration `002_allow_worker_owned_tasks.sql`.
+- RLS remains enabled and existing policies remain in place.
+- `user_id` can now be null for Worker-created rows; existing authenticated rows are preserved.
+- Added global unique `client_id` index for Worker upserts.
+
+### Cloudflare
+
+- Created Worker project `war-room-api`.
+- Configured secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `WAR_ROOM_PIN`.
+- Deployed Worker to `https://war-room-api.incrementumx.workers.dev`.
+
+### Verification
+
+- Worker dry-run passed.
+- Supabase migration push completed.
+- Worker `/health` works over HTTPS.
+- PIN `0000` returns 401 and PIN `1311` returns task data over HTTPS.
+- API smoke test passed for create, edit priority, archive, restore, and delete.
+- Local static app opens directly to War Room when the remembered PIN is present.
+- No service-role key or secret was written to committed files.
+
+---
+
 ## Auth Session Persistence Fix - 2026-05-04
 
 **Implemented by:** Codex

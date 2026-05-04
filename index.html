@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>War Room</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --bg:#f6f5f1; --surface:#fff; --surface2:#faf9f5;
@@ -15,7 +14,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",system-ui,sans-serif;padding:28px;font-size:14px;line-height:1.45}
-.app-shell[hidden],.access-screen[hidden],.gate-step[hidden],.auth-step[hidden]{display:none}
+.app-shell[hidden],.access-screen[hidden],.gate-step[hidden]{display:none}
 .access-screen{min-height:calc(100vh - 56px);display:grid;place-items:center}
 .access-card{width:min(460px,100%);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;box-shadow:0 18px 48px rgba(36,48,68,.08)}
 .access-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px}
@@ -34,7 +33,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .date{margin-top:3px}
 .meta{text-align:right}
 .session-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:4px}
-.session-email,.sync-status{color:var(--text-muted);font-size:11px}
+.sync-status{color:var(--text-muted);font-size:11px}
 .sign-out{border:0;background:transparent;color:var(--text-muted);font:inherit;font-size:11px;cursor:pointer;padding:0}
 .sign-out:hover{color:var(--text)}
 .tabs{display:inline-flex;gap:4px;margin-top:16px;padding:3px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)}
@@ -133,22 +132,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="access-card">
       <div class="access-kicker">Private command panel</div>
       <h1>War Room</h1>
-      <p>The local access phrase is a lightweight browser gate only. Task data unlocks after Supabase authentication and row-level security.</p>
+      <p>Enter the War Room PIN. The PIN is a lightweight convenience gate; task data is served through a private Worker API.</p>
 
       <div id="gate-step" class="gate-step">
         <form id="gate-form" class="access-form">
-          <input class="fi" id="gate-passphrase" type="password" autocomplete="current-password" placeholder="Access phrase" required>
+          <input class="fi" id="gate-passphrase" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN" required>
           <div class="access-actions">
             <button class="btn primary" type="submit">Continue</button>
-            <button class="btn" id="gate-reset" type="button">Reset local gate</button>
+            <button class="btn" id="gate-reset" type="button">Forget PIN</button>
           </div>
-        </form>
-      </div>
-
-      <div id="auth-step" class="auth-step" hidden>
-        <form id="auth-form" class="access-form">
-          <input class="fi" id="auth-email" type="email" autocomplete="email" placeholder="Email" required>
-          <button class="btn primary" type="submit">Send magic link</button>
         </form>
       </div>
 
@@ -166,8 +158,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="meta">
         <div id="resumo"></div>
         <div class="session-row">
-          <span id="session-email" class="session-email"></span>
-          <button id="sign-out" class="sign-out" type="button">Sign out</button>
+          <button id="sign-out" class="sign-out" type="button">Lock</button>
         </div>
         <div id="sync-status" class="sync-status"></div>
       </div>
@@ -264,18 +255,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 
 <script>
-var SUPABASE_CONFIG = {
-  url: "https://oziequrhypzbfdynnnda.supabase.co",
-  anonKey: "sb_publishable_s8IZ0NBnr52-3jo4WUXKwA_XYVfNacB",
-  table: "war_room_tasks"
+var WORKER_CONFIG = {
+  apiUrl: "https://war-room-api.incrementumx.workers.dev"
 };
 var STORAGE_KEY = "warroom_v1_min";
 var TAB_KEY = "warroom_active_tab";
 var COLLAPSE_KEY = "warroom_collapsed_topics";
 var PENDING_DELETE_KEY = "warroom_pending_deletes";
-var GATE_HASH_KEY = "warroom_gate_hash";
-var GATE_UNLOCKED_KEY = "warroom_gate_unlocked";
-var IMPORT_PREFIX = "warroom_imported_";
+var PIN_KEY = "warroom_pin";
+var IMPORT_KEY = "warroom_worker_imported";
 var S = null;
 var dragTaskId = null;
 var editingTaskId = null;
@@ -283,16 +271,14 @@ var activeTab = "tasks";
 var collapsedTopics = {};
 var lastArchiveUndo = null;
 var toastTimer = null;
-var sb = null;
-var currentUser = null;
+var currentPin = null;
 var syncReady = false;
 var isApplyingRemote = false;
 var syncTimer = null;
 var isSyncing = false;
 var needsSyncAgain = false;
-var realtimeChannel = null;
+var syncPollTimer = null;
 var pendingDeletes = {};
-var authListenerBound = false;
 
 function uid(){ return Math.random().toString(36).slice(2,9); }
 
@@ -425,7 +411,7 @@ function saveLocalOnly(){
 
 function save(){
   saveLocalOnly();
-  if (syncReady && currentUser && !isApplyingRemote) scheduleSync();
+  if (syncReady && currentPin && !isApplyingRemote) scheduleSync();
 }
 
 function saveTab(){
@@ -1007,6 +993,10 @@ function archiveTask(taskId){
   lastArchiveUndo = { task: previous, index: index };
   editingTaskId = null;
   save();
+  if (currentPin) {
+    api("/tasks/" + encodeURIComponent(task.id) + "/archive", { method: "POST" })
+      .catch(function(){ scheduleSync(); });
+  }
   render();
   showToast();
 }
@@ -1022,6 +1012,10 @@ function undoArchive(){
   }
   lastArchiveUndo = null;
   save();
+  if (currentPin) {
+    api("/tasks/" + encodeURIComponent(copy.id) + "/restore", { method: "POST" })
+      .catch(function(){ scheduleSync(); });
+  }
   hideToast();
   render();
 }
@@ -1036,6 +1030,10 @@ function restoreTask(taskId){
   setOrderState(task, false);
   touch(task);
   save();
+  if (currentPin) {
+    api("/tasks/" + encodeURIComponent(task.id) + "/restore", { method: "POST" })
+      .catch(function(){ scheduleSync(); });
+  }
   render();
 }
 
@@ -1051,168 +1049,51 @@ function setSyncStatus(message){
   if (el) el.textContent = message || "";
 }
 
-function initSupabaseClient(){
-  if (sb) return true;
-  if (!window.supabase || !SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
-    setAccessStatus("Supabase is not configured yet.", true);
-    return false;
-  }
-  sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  });
-  return true;
-}
-
-function bindAuthListener(){
-  if (authListenerBound || !initSupabaseClient()) return;
-  authListenerBound = true;
-  sb.auth.onAuthStateChange(function(event, session){
-    if (session && session.user && isGateUnlocked()) {
-      startApp(session);
-      return;
-    }
-    if (event === "SIGNED_OUT") {
-      currentUser = null;
-      syncReady = false;
-      document.getElementById("app-shell").hidden = true;
-      document.getElementById("access-screen").hidden = false;
-      if (isGateUnlocked()) {
-        showAuthStep("Signed out. Enter your email to sign in again.");
-      }
-    }
-  });
-}
-
-async function hashPhrase(value){
-  var data = new TextEncoder().encode(value);
-  var digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.prototype.map.call(new Uint8Array(digest), function(byte){
-    return byte.toString(16).padStart(2, "0");
-  }).join("");
-}
-
-function isGateUnlocked(){
-  try{
-    return localStorage.getItem(GATE_UNLOCKED_KEY) === "1"
-      || sessionStorage.getItem(GATE_UNLOCKED_KEY) === "1";
-  } catch(e){
-    return false;
-  }
-}
-
-function markGateUnlocked(){
-  try{ localStorage.setItem(GATE_UNLOCKED_KEY, "1"); } catch(e){}
-  try{ sessionStorage.setItem(GATE_UNLOCKED_KEY, "1"); } catch(e){}
-}
-
 async function initAccessGate(){
-  initSupabaseClient();
-  bindAuthListener();
   var form = document.getElementById("gate-form");
   var pass = document.getElementById("gate-passphrase");
   var reset = document.getElementById("gate-reset");
-  var savedHash = localStorage.getItem(GATE_HASH_KEY);
-  pass.placeholder = savedHash ? "Access phrase" : "Create local access phrase";
+  var savedPin = localStorage.getItem(PIN_KEY);
+  pass.placeholder = "PIN";
 
   reset.addEventListener("click", function(){
-    localStorage.removeItem(GATE_HASH_KEY);
-    try{ localStorage.removeItem(GATE_UNLOCKED_KEY); } catch(e){}
-    try{ sessionStorage.removeItem(GATE_UNLOCKED_KEY); } catch(e){}
+    lockWarRoom();
     pass.value = "";
-    pass.placeholder = "Create local access phrase";
-    document.getElementById("gate-step").hidden = false;
-    document.getElementById("auth-step").hidden = true;
-    setAccessStatus("Local gate reset. Create a new browser-local phrase.");
+    setAccessStatus("PIN forgotten on this browser.");
   });
 
   form.addEventListener("submit", async function(e){
     e.preventDefault();
-    var phrase = pass.value;
-    if (!phrase) return;
-    var currentHash = localStorage.getItem(GATE_HASH_KEY);
-    var hash = await hashPhrase(phrase);
-    if (!currentHash) {
-      localStorage.setItem(GATE_HASH_KEY, hash);
-      markGateUnlocked();
-      pass.value = "";
-      await bootstrapAuthSession("Local gate created. Checking session...");
-      return;
-    }
-    if (hash !== currentHash) {
-      setAccessStatus("Access phrase does not match this browser.", true);
-      return;
-    }
-    markGateUnlocked();
+    var pin = pass.value.trim();
+    if (!pin) return;
+    await unlockWithPin(pin, true);
     pass.value = "";
-    await bootstrapAuthSession("Local gate passed. Checking session...");
   });
 
-  bindAuthForm();
-  if (isGateUnlocked()) {
-    await bootstrapAuthSession("Checking saved session...");
+  if (savedPin) {
+    await unlockWithPin(savedPin, false);
     return;
   }
-  setAccessStatus(savedHash ? "Enter the local access phrase for this browser." : "Create a local access phrase for this browser.");
+  setAccessStatus("Enter the War Room PIN.");
 }
 
-function showAuthStep(message){
-  document.getElementById("gate-step").hidden = true;
-  document.getElementById("auth-step").hidden = false;
-  setAccessStatus(message || "");
-}
-
-function bindAuthForm(){
-  var form = document.getElementById("auth-form");
-  form.addEventListener("submit", async function(e){
-    e.preventDefault();
-    if (!initSupabaseClient()) return;
-    var email = String(document.getElementById("auth-email").value || "").trim();
-    if (!email) return;
-    setAccessStatus("Sending magic link...");
-    var redirectTo = window.location.href.split("#")[0];
-    var result = await sb.auth.signInWithOtp({
-      email: email,
-      options: { emailRedirectTo: redirectTo }
-    });
-    if (result.error) {
-      setAccessStatus(result.error.message, true);
-      return;
-    }
-    setAccessStatus("Magic link sent. Open it in this browser to continue.");
-  });
-}
-
-async function checkAuthSession(){
-  return bootstrapAuthSession("Checking saved session...");
-}
-
-async function bootstrapAuthSession(message){
-  if (!initSupabaseClient()) return;
-  bindAuthListener();
-  document.getElementById("gate-step").hidden = true;
-  document.getElementById("auth-step").hidden = true;
-  setAccessStatus(message || "Checking saved session...");
-  var result = await sb.auth.getSession();
-  if (result.error) {
-    showAuthStep(result.error.message);
-    document.getElementById("access-status").classList.add("error");
-    return;
-  }
-  if (result.data.session && result.data.session.user) {
-    await startApp(result.data.session);
-  } else {
-    showAuthStep("Enter your email and use the magic link to open War Room.");
+async function unlockWithPin(pin, remember){
+  setAccessStatus("Checking PIN...");
+  currentPin = pin;
+  try {
+    await fetchRemoteTasks(true);
+    if (remember) localStorage.setItem(PIN_KEY, pin);
+    await startApp();
+  } catch(e) {
+    currentPin = null;
+    localStorage.removeItem(PIN_KEY);
+    setAccessStatus(e.message || "PIN rejected.", true);
   }
 }
 
 function localToRemote(task, index){
   var priority = ["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P2";
   return {
-    user_id: currentUser.id,
     client_id: task.id,
     title: task.title || "Untitled",
     comment: taskComment(task) || null,
@@ -1258,28 +1139,25 @@ function remoteToLocal(row){
 }
 
 async function fetchRemoteTasks(silent){
-  if (!currentUser || !sb) return;
   if (!silent) setSyncStatus("Syncing...");
-  var result = await sb
-    .from(SUPABASE_CONFIG.table)
-    .select("*")
-    .order("order_index", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
-  if (result.error) {
+  try {
+    var data = await api("/tasks");
+    isApplyingRemote = true;
+    S.tasks = (data || []).map(remoteToLocal);
+    saveLocalOnly();
+    isApplyingRemote = false;
+    setSyncStatus("Synced");
+    render();
+    return data;
+  } catch(e) {
     setSyncStatus("Local cache");
-    if (!silent) setAccessStatus(result.error.message, true);
-    return;
+    if (!silent) setAccessStatus(e.message, true);
+    throw e;
   }
-  isApplyingRemote = true;
-  S.tasks = (result.data || []).map(remoteToLocal);
-  saveLocalOnly();
-  isApplyingRemote = false;
-  setSyncStatus("Synced");
-  render();
 }
 
-async function pushLocalToSupabase(){
-  if (!currentUser || !sb || isApplyingRemote) return;
+async function pushLocalToWorker(){
+  if (!currentPin || isApplyingRemote) return;
   if (isSyncing) {
     needsSyncAgain = true;
     return;
@@ -1287,116 +1165,112 @@ async function pushLocalToSupabase(){
   isSyncing = true;
   setSyncStatus("Saving...");
   var deleteIds = Object.keys(pendingDeletes);
-  if (deleteIds.length) {
-    var del = await sb
-      .from(SUPABASE_CONFIG.table)
-      .delete()
-      .eq("user_id", currentUser.id)
-      .in("client_id", deleteIds);
-    if (del.error) {
+  try {
+    for (var i = 0; i < deleteIds.length; i += 1) {
+      await api("/tasks/" + encodeURIComponent(deleteIds[i]), { method: "DELETE" });
+    }
+    if (deleteIds.length) {
+      pendingDeletes = {};
+      savePendingDeletes();
+    }
+    if (S.tasks.length) {
+      await api("/tasks/bulk-import", {
+        method: "POST",
+        body: { tasks: S.tasks.map(localToRemote) }
+      });
+    }
+    isSyncing = false;
+    setSyncStatus("Synced");
+    if (needsSyncAgain) {
+      needsSyncAgain = false;
+      scheduleSync();
+    }
+  } catch(e) {
       isSyncing = false;
       setSyncStatus("Save pending");
       return;
-    }
-    pendingDeletes = {};
-    savePendingDeletes();
-  }
-  var rows = S.tasks.map(localToRemote);
-  if (rows.length) {
-    var upsert = await sb
-      .from(SUPABASE_CONFIG.table)
-      .upsert(rows, { onConflict: "user_id,client_id" });
-    if (upsert.error) {
-      isSyncing = false;
-      setSyncStatus("Save pending");
-      return;
-    }
-  }
-  isSyncing = false;
-  setSyncStatus("Synced");
-  if (needsSyncAgain) {
-    needsSyncAgain = false;
-    scheduleSync();
   }
 }
 
 function scheduleSync(){
-  if (!syncReady || !currentUser) return;
+  if (!syncReady || !currentPin) return;
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(function(){ pushLocalToSupabase(); }, 250);
+  syncTimer = setTimeout(function(){ pushLocalToWorker(); }, 250);
 }
 
-async function hydrateFromSupabase(){
+async function hydrateFromWorker(){
   setSyncStatus("Syncing...");
-  var importKey = IMPORT_PREFIX + currentUser.id;
   var localTasks = S.tasks.slice();
-  var remote = await sb
-    .from(SUPABASE_CONFIG.table)
-    .select("*")
-    .order("order_index", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
-  if (remote.error) {
+  try {
+    var remote = await api("/tasks");
+    if (!localStorage.getItem(IMPORT_KEY) && localTasks.length && !remote.length) {
+      await api("/tasks/bulk-import", {
+        method: "POST",
+        body: { tasks: localTasks.map(localToRemote) }
+      });
+      localStorage.setItem(IMPORT_KEY, "1");
+    } else if (!localStorage.getItem(IMPORT_KEY)) {
+      localStorage.setItem(IMPORT_KEY, "1");
+    }
+    syncReady = true;
+    await fetchRemoteTasks(true);
+  } catch(e) {
     syncReady = false;
     setSyncStatus("Local cache");
     render();
-    return;
   }
-  if (!localStorage.getItem(importKey) && localTasks.length && !(remote.data || []).length) {
-    var rows = localTasks.map(function(task, index){ return localToRemote(task, index); });
-    var imported = await sb
-      .from(SUPABASE_CONFIG.table)
-      .upsert(rows, { onConflict: "user_id,client_id" });
-    if (!imported.error) localStorage.setItem(importKey, "1");
-  } else if (!localStorage.getItem(importKey)) {
-    localStorage.setItem(importKey, "1");
-  }
-  syncReady = true;
-  await fetchRemoteTasks(true);
 }
 
-function subscribeRealtime(){
-  if (!currentUser || !sb) return;
-  if (realtimeChannel) sb.removeChannel(realtimeChannel);
-  realtimeChannel = sb
-    .channel("war-room-tasks-" + currentUser.id)
-    .on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: SUPABASE_CONFIG.table,
-      filter: "user_id=eq." + currentUser.id
-    }, function(){
-      if (!isSyncing) fetchRemoteTasks(true);
-    })
-    .subscribe();
+function startPolling(){
+  if (syncPollTimer) clearInterval(syncPollTimer);
+  syncPollTimer = setInterval(function(){
+    if (!isSyncing && currentPin) fetchRemoteTasks(true);
+  }, 15000);
 }
 
-async function startApp(session){
-  if (currentUser && currentUser.id === session.user.id && syncReady) return;
-  currentUser = session.user;
-  document.getElementById("session-email").textContent = currentUser.email || "";
+async function startApp(){
   document.getElementById("access-screen").hidden = true;
   document.getElementById("app-shell").hidden = false;
-  await hydrateFromSupabase();
-  subscribeRealtime();
+  await hydrateFromWorker();
+  startPolling();
 }
 
-async function signOut(){
+function lockWarRoom(){
   syncReady = false;
-  currentUser = null;
-  if (realtimeChannel && sb) {
-    sb.removeChannel(realtimeChannel);
-    realtimeChannel = null;
-  }
-  if (sb) await sb.auth.signOut();
+  currentPin = null;
+  localStorage.removeItem(PIN_KEY);
+  if (syncPollTimer) clearInterval(syncPollTimer);
+  syncPollTimer = null;
   document.getElementById("app-shell").hidden = true;
   document.getElementById("access-screen").hidden = false;
-  if (isGateUnlocked()) {
-    showAuthStep("Signed out. Enter your email to sign in again.");
-  } else {
-    document.getElementById("gate-step").hidden = false;
-    document.getElementById("auth-step").hidden = true;
-    setAccessStatus("Signed out.");
-  }
+  document.getElementById("gate-step").hidden = false;
+}
+
+function signOut(){
+  lockWarRoom();
+  setAccessStatus("Locked. Enter PIN to reopen.");
+}
+
+async function api(path, options){
+  options = options || {};
+  var response = await fetch(workerApiUrl() + path, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-War-Room-Pin": currentPin || ""
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  var text = await response.text();
+  var data = text ? JSON.parse(text) : null;
+  if (!response.ok) throw new Error((data && data.error) || "Worker request failed");
+  return data;
+}
+
+function workerApiUrl(){
+  var override = "";
+  try{ override = localStorage.getItem("warroom_worker_api_url") || ""; } catch(e){}
+  return (override || WORKER_CONFIG.apiUrl).replace(/\/$/, "");
 }
 
 function showToast(){
