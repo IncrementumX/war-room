@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>War Room</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#fff; --surface2:#faf9f5;
+  --border:#e7e4dc; --border2:#cbc8bf;
+  --text:#171713; --text-dim:#666258; --text-muted:#9a968d;
+  --ink:#243044; --active:#28466f;
+  --toast:#171713;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",system-ui,sans-serif;padding:28px;font-size:14px;line-height:1.45}
+.app-shell[hidden],.access-screen[hidden],.gate-step[hidden],.auth-step[hidden]{display:none}
+.access-screen{min-height:calc(100vh - 56px);display:grid;place-items:center}
+.access-card{width:min(460px,100%);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;box-shadow:0 18px 48px rgba(36,48,68,.08)}
+.access-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px}
+.access-card h1{font-size:28px;line-height:1.05;color:var(--ink);letter-spacing:0;margin-bottom:8px}
+.access-card p{font-size:12px;color:var(--text-muted);margin-bottom:16px}
+.access-form{display:grid;gap:9px}
+.access-actions{display:flex;align-items:center;gap:8px;margin-top:3px}
+.access-status{min-height:18px;font-size:12px;color:var(--text-muted);margin-top:12px}
+.access-status.error{color:#9f2f25}
+.app-shell{display:block}
+.header,.layout{width:min(1120px,100%);margin:0 auto}
+.header{border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:22px}
+.header-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}
+.title{font-weight:700;font-size:20px;letter-spacing:0;color:var(--ink)}
+.date,.meta{color:var(--text-muted);font-size:12px}
+.date{margin-top:3px}
+.meta{text-align:right}
+.session-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:4px}
+.session-email,.sync-status{color:var(--text-muted);font-size:11px}
+.sign-out{border:0;background:transparent;color:var(--text-muted);font:inherit;font-size:11px;cursor:pointer;padding:0}
+.sign-out:hover{color:var(--text)}
+.tabs{display:inline-flex;gap:4px;margin-top:16px;padding:3px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)}
+.tab-btn{border:0;background:transparent;color:var(--text-dim);font:inherit;font-size:12px;padding:7px 14px;border-radius:6px;cursor:pointer}
+.tab-btn.active{background:var(--surface);color:var(--active);box-shadow:0 1px 2px rgba(36,48,68,.08)}
+.layout{display:block}
+.view{display:none}
+.view.active{display:block}
+.view-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:16px}
+.view-title h1{font-size:24px;line-height:1.1;letter-spacing:0;color:var(--ink)}
+.view-title p{margin-top:6px;color:var(--text-muted);font-size:12px;max-width:680px}
+.count-line{color:var(--text-muted);font-size:12px;white-space:nowrap}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px}
+.subtle{font-size:12px;color:var(--text-muted)}
+.stack{display:grid;grid-template-columns:1fr;gap:20px}
+.topic{padding-top:2px}
+.topic-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.topic-title{display:flex;align-items:center;gap:9px;min-width:0}
+.topic h3{font-size:14px;font-weight:700;color:var(--ink)}
+.topic-count{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.collapse-btn{border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font:inherit;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;min-width:44px}
+.collapse-btn:hover{border-color:var(--border2);color:var(--text)}
+.subtopic{margin-top:14px}
+.subtopic:first-of-type{margin-top:0}
+.subtopic-title{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
+.subtopic-title:after{content:"";height:1px;background:var(--border);flex:1}
+.task-list{list-style:none;display:flex;flex-direction:column;gap:8px;min-height:28px}
+.task-list.drop{background:rgba(40,70,111,.06);outline:1px dashed var(--border2);border-radius:8px}
+.task{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:12px;min-width:0;border:1px solid var(--border);border-radius:8px;padding:11px 12px;background:var(--surface);transition:background .1s ease,border-color .1s ease,opacity .12s ease}
+.order-list .task{border-radius:6px;padding:13px 12px;background:linear-gradient(90deg,var(--surface2),var(--surface))}
+.task.editing{display:block}
+.task.drag{opacity:.45}
+.task.archived{background:var(--surface2)}
+.task-left{display:flex;align-items:flex-start;gap:10px;min-width:0;padding-top:2px}
+.rank{width:30px;min-width:30px;color:var(--active);font-size:11px;font-weight:700;line-height:20px;text-align:center;font-variant-numeric:tabular-nums;border:1px solid rgba(40,70,111,.14);border-radius:999px;background:rgba(40,70,111,.06)}
+.check{margin-top:3px;accent-color:var(--active);flex:0 0 auto}
+.body{flex:1;min-width:0}
+.label{font-size:14px;font-weight:650;color:var(--text)}
+.note{font-size:12px;color:var(--text-muted);margin-top:3px}
+.meta-row{display:flex;gap:7px;margin-top:6px;flex-wrap:wrap;align-items:center}
+.label,.note,.subtle{overflow-wrap:anywhere;word-break:normal}
+.badge,.priority-select{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700;letter-spacing:0;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border)}
+.priority-select{width:auto;min-width:56px;cursor:pointer;flex:0 0 auto}
+.priority-select:hover,.priority-select:focus{border-color:var(--border2);outline:none}
+.order-state{font-size:11px;color:var(--active);background:rgba(40,70,111,.08);border-radius:999px;padding:2px 8px}
+.task-right{display:flex;align-items:flex-start;justify-content:flex-end;gap:8px;min-width:238px}
+.actions{display:flex;gap:5px;align-items:center;justify-content:flex-end;min-width:170px;white-space:nowrap}
+.task .actions{opacity:0;pointer-events:none;transition:opacity .12s ease}
+.task:hover .actions,.task:focus-within .actions{opacity:1;pointer-events:auto}
+.icon-btn{border:1px solid transparent;background:transparent;color:var(--text-muted);font:inherit;font-size:11px;padding:4px 7px;border-radius:6px;cursor:pointer}
+.icon-btn:hover{background:var(--surface2);border-color:var(--border);color:var(--text)}
+.form{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(120px,.7fr) minmax(120px,.7fr) 76px auto;gap:7px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.quick-form{grid-template-columns:minmax(220px,1.3fr) minmax(180px,1fr) minmax(130px,.7fr) 76px auto;margin:0 0 18px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)}
+.order-controls{display:grid;grid-template-columns:1.45fr .85fr;gap:10px;margin-bottom:18px}
+.order-form,.order-existing-form{display:grid;gap:7px;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)}
+.order-form{grid-template-columns:minmax(180px,1.2fr) minmax(150px,.9fr) minmax(110px,.65fr) 72px auto}
+.order-existing-form{grid-template-columns:minmax(180px,1fr) auto;align-content:start}
+.control-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);grid-column:1/-1;margin-bottom:1px}
+.edit-form{display:grid;grid-template-columns:1fr;gap:7px}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr 86px auto;gap:7px}
+.fi{width:100%;border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:8px 9px;font:inherit;font-size:12px;color:var(--text)}
+.fi::placeholder{color:var(--text-muted)}
+.fi:focus{outline:none;border-color:var(--active);box-shadow:0 0 0 2px rgba(40,70,111,.08)}
+.btn{border:1px solid var(--border2);background:var(--surface);padding:8px 12px;font:inherit;font-size:12px;border-radius:6px;cursor:pointer;color:var(--text)}
+.btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn:disabled,.fi:disabled{opacity:.55;cursor:not-allowed}
+.empty{display:none;border:1px dashed var(--border2);border-radius:8px;padding:18px;color:var(--text-muted);background:var(--surface2);font-size:12px}
+.archive-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.archive-toolbar .fi{max-width:180px}
+.archive-date{margin:18px 0 9px;font-size:12px;font-weight:700;color:var(--ink)}
+.archive-date:first-child{margin-top:0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);display:flex;align-items:center;gap:12px;min-width:220px;justify-content:space-between;padding:10px 12px;border-radius:8px;background:var(--toast);color:#fff;font-size:12px;box-shadow:0 10px 26px rgba(23,23,19,.18);opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease;z-index:20}
+.toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+.toast button{border:0;background:transparent;color:#fff;font:inherit;font-weight:700;cursor:pointer;padding:2px 0}
+@media (max-width:760px){
+  body{padding:18px}
+  .header-top,.view-head{align-items:flex-start;flex-direction:column}
+  .meta{text-align:left}
+  .session-row{justify-content:flex-start}
+  .tabs{display:flex;width:100%}
+  .tab-btn{flex:1}
+  .form,.quick-form,.order-controls,.order-form,.order-existing-form,.edit-grid{grid-template-columns:1fr}
+  .task{grid-template-columns:auto minmax(0,1fr)}
+  .task-right{grid-column:2;min-width:0;width:100%;margin-top:8px}
+  .task-right,.actions{justify-content:flex-end}
+  .actions{min-width:0;white-space:normal}
+  .actions{flex-wrap:wrap;justify-content:flex-end}
+}
+@media (hover:none){
+  .task .actions{opacity:1;pointer-events:auto}
+}
+</style>
+</head>
+<body>
+  <section id="access-screen" class="access-screen">
+    <div class="access-card">
+      <div class="access-kicker">Private command panel</div>
+      <h1>War Room</h1>
+      <p>The local access phrase is a lightweight browser gate only. Task data unlocks after Supabase authentication and row-level security.</p>
+
+      <div id="gate-step" class="gate-step">
+        <form id="gate-form" class="access-form">
+          <input class="fi" id="gate-passphrase" type="password" autocomplete="current-password" placeholder="Access phrase" required>
+          <div class="access-actions">
+            <button class="btn primary" type="submit">Continue</button>
+            <button class="btn" id="gate-reset" type="button">Reset local gate</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="auth-step" class="auth-step" hidden>
+        <form id="auth-form" class="access-form">
+          <input class="fi" id="auth-email" type="email" autocomplete="email" placeholder="Email" required>
+          <button class="btn primary" type="submit">Send magic link</button>
+        </form>
+      </div>
+
+      <div id="access-status" class="access-status"></div>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell" hidden>
+  <header class="header">
+    <div class="header-top">
+      <div>
+        <div class="title">War Room</div>
+        <div class="date" id="data-atual"></div>
+      </div>
+      <div class="meta">
+        <div id="resumo"></div>
+        <div class="session-row">
+          <span id="session-email" class="session-email"></span>
+          <button id="sign-out" class="sign-out" type="button">Sign out</button>
+        </div>
+        <div id="sync-status" class="sync-status"></div>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="War Room views">
+      <button class="tab-btn" type="button" data-tab="tasks">Tasks</button>
+      <button class="tab-btn" type="button" data-tab="order">Order</button>
+      <button class="tab-btn" type="button" data-tab="archived">Archived</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section id="view-tasks" class="view">
+      <div class="view-head">
+        <div class="view-title">
+          <h1>Tasks</h1>
+          <p>Active work, grouped by theme.</p>
+        </div>
+        <div class="count-line" id="tasks-count"></div>
+      </div>
+      <div class="panel">
+        <form id="form-area" class="form quick-form">
+          <input class="fi" name="titulo" placeholder="New task" required>
+          <input class="fi" name="comment" placeholder="Comment">
+          <select class="fi" id="quick-theme-select" name="topico"></select>
+          <select class="fi" name="prioridade">
+            <option value="P1">P1</option>
+            <option value="P2" selected>P2</option>
+            <option value="P3">P3</option>
+          </select>
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+        <div id="areas" class="stack"></div>
+        <div id="tasks-empty" class="empty">No tasks yet.</div>
+      </div>
+    </section>
+
+    <section id="view-order" class="view">
+      <div class="view-head">
+        <div class="view-title">
+          <h1>Order</h1>
+          <p>Execution sequence.</p>
+        </div>
+        <div class="count-line" id="order-count"></div>
+      </div>
+      <div class="panel">
+        <div class="order-controls">
+          <form id="form-ordem" class="order-form">
+            <div class="control-label">Write new order item</div>
+            <input class="fi" name="titulo" placeholder="Add to order" required>
+            <input class="fi" name="comment" placeholder="Comment">
+            <input class="fi" name="topico" placeholder="Theme" value="General">
+            <select class="fi" name="prioridade">
+              <option value="P1">P1</option>
+              <option value="P2" selected>P2</option>
+              <option value="P3">P3</option>
+            </select>
+            <button class="btn primary" type="submit">Add</button>
+          </form>
+          <form id="form-existing-order" class="order-existing-form">
+            <div class="control-label">Add from Tasks</div>
+            <select class="fi" id="existing-order-select" name="taskId"></select>
+            <button class="btn" type="submit">Add</button>
+          </form>
+        </div>
+        <ul id="lista-ordem" class="task-list order-list"></ul>
+        <div id="order-empty" class="empty">Order is empty. Add the next thing to attack, or move a task in from Tasks.</div>
+      </div>
+    </section>
+
+    <section id="view-archived" class="view">
+      <div class="view-head">
+        <div class="view-title">
+          <h1>Archived</h1>
+          <p>Completed work by date.</p>
+        </div>
+        <div class="count-line" id="archived-count"></div>
+      </div>
+      <div class="panel">
+        <div class="archive-toolbar">
+          <input class="fi" id="archive-date-filter" type="date" aria-label="Filter archived tasks by date">
+          <button class="btn" id="archive-clear-filter" type="button">All dates</button>
+        </div>
+        <div id="archive-groups"></div>
+        <div id="archive-empty" class="empty">No archived tasks yet.</div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite">
+    <span id="toast-message">Task concluded</span>
+    <button id="toast-undo" type="button">Undo</button>
+  </div>
+  </div>
+
+<script>
+var SUPABASE_CONFIG = {
+  url: "https://oziequrhypzbfdynnnda.supabase.co",
+  anonKey: "sb_publishable_s8IZ0NBnr52-3jo4WUXKwA_XYVfNacB",
+  table: "war_room_tasks"
+};
+var STORAGE_KEY = "warroom_v1_min";
+var TAB_KEY = "warroom_active_tab";
+var COLLAPSE_KEY = "warroom_collapsed_topics";
+var PENDING_DELETE_KEY = "warroom_pending_deletes";
+var GATE_HASH_KEY = "warroom_gate_hash";
+var IMPORT_PREFIX = "warroom_imported_";
+var S = null;
+var dragTaskId = null;
+var editingTaskId = null;
+var activeTab = "tasks";
+var collapsedTopics = {};
+var lastArchiveUndo = null;
+var toastTimer = null;
+var sb = null;
+var currentUser = null;
+var syncReady = false;
+var isApplyingRemote = false;
+var syncTimer = null;
+var isSyncing = false;
+var needsSyncAgain = false;
+var realtimeChannel = null;
+var pendingDeletes = {};
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+
+function defaultState(){
+  return { tasks: [] };
+}
+
+function nowIso(){
+  return new Date().toISOString();
+}
+
+function migrateOldState(old){
+  var tasks = [];
+  var stamp = nowIso();
+  if (!old || !Array.isArray(old.categories)) return null;
+  old.categories.forEach(function(cat){
+    (cat.topics || []).forEach(function(topic){
+      (topic.tasks || []).forEach(function(t){
+        tasks.push({
+          id: t.id || uid(),
+          title: t.label || "Untitled",
+          comment: t.note || "",
+          note: t.note || "",
+          priority: t.badge === "badge-hot" ? "P1" : (t.badge === "badge-manual" ? "P2" : "P3"),
+          topic: cat.name || "General",
+          theme: cat.name || "General",
+          subtopic: topic.name || "General",
+          inOrderOfDay: (cat.name || "").toLowerCase() === "hoje",
+          inOrder: (cat.name || "").toLowerCase() === "hoje",
+          status: t.done ? "archived" : "active",
+          done: !!t.done,
+          completedAt: t.done ? stamp : null,
+          archivedAt: t.done ? stamp : null,
+          createdAt: stamp,
+          updatedAt: stamp
+        });
+      });
+    });
+  });
+  return { tasks: tasks };
+}
+
+function normalizeTask(task){
+  var stamp = nowIso();
+  var status = task.status === "archived" || task.done === true ? "archived" : "active";
+  var completedAt = task.completedAt || task.archivedAt || (status === "archived" ? stamp : null);
+  var topic = String(task.topic || task.theme || "General").trim() || "General";
+  var subtopic = String(task.subtopic || "General").trim() || "General";
+  var inOrder = !!(task.inOrderOfDay || task.inOrder);
+  if (status === "archived") inOrder = false;
+  var priority = String(task.priority || "P2").toUpperCase();
+  if (["P1", "P2", "P3"].indexOf(priority) === -1) priority = "P2";
+  task.id = task.id || uid();
+  task.title = String(task.title || task.label || "Untitled").trim() || "Untitled";
+  task.comment = task.comment != null ? String(task.comment) : String(task.note || "");
+  task.note = task.note != null ? String(task.note) : task.comment;
+  task.priority = priority;
+  task.topic = topic;
+  task.theme = topic;
+  task.subtopic = subtopic;
+  task.inOrderOfDay = inOrder;
+  task.inOrder = inOrder;
+  task.status = status;
+  task.done = status === "archived";
+  task.completedAt = completedAt;
+  task.archivedAt = status === "archived" ? (task.archivedAt || completedAt) : null;
+  task.createdAt = task.createdAt || stamp;
+  task.updatedAt = task.updatedAt || stamp;
+  return task;
+}
+
+function migrateCurrentState(){
+  if (!S || !Array.isArray(S.tasks)) S = defaultState();
+  S.tasks = S.tasks.map(normalizeTask);
+}
+
+function load(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      S = JSON.parse(raw);
+      migrateCurrentState();
+      save();
+      return;
+    }
+    var oldRaw = localStorage.getItem("warroom_v4");
+    if (oldRaw) {
+      var migrated = migrateOldState(JSON.parse(oldRaw));
+      S = migrated || defaultState();
+      migrateCurrentState();
+      save();
+      return;
+    }
+  } catch(e){}
+  S = defaultState();
+}
+
+function loadTab(){
+  try{
+    var saved = localStorage.getItem(TAB_KEY);
+    if (saved === "tasks" || saved === "order" || saved === "archived") activeTab = saved;
+  } catch(e){}
+}
+
+function loadCollapsed(){
+  try{
+    var raw = localStorage.getItem(COLLAPSE_KEY);
+    collapsedTopics = raw ? JSON.parse(raw) : {};
+  } catch(e){
+    collapsedTopics = {};
+  }
+}
+
+function loadPendingDeletes(){
+  try{
+    var raw = localStorage.getItem(PENDING_DELETE_KEY);
+    pendingDeletes = raw ? JSON.parse(raw) : {};
+  } catch(e){
+    pendingDeletes = {};
+  }
+}
+
+function savePendingDeletes(){
+  try{ localStorage.setItem(PENDING_DELETE_KEY, JSON.stringify(pendingDeletes)); } catch(e){}
+}
+
+function saveLocalOnly(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(S));
+}
+
+function save(){
+  saveLocalOnly();
+  if (syncReady && currentUser && !isApplyingRemote) scheduleSync();
+}
+
+function saveTab(){
+  try{ localStorage.setItem(TAB_KEY, activeTab); } catch(e){}
+}
+
+function saveCollapsed(){
+  try{ localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsedTopics)); } catch(e){}
+}
+
+function fmtDate(){
+  return new Date().toLocaleDateString("en-US", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
+}
+
+function stats(){
+  var active = activeTasks().length;
+  var archived = archivedTasks().length;
+  var order = activeTasks().filter(function(t){ return t.inOrderOfDay; }).length;
+  return { active: active, archived: archived, order: order };
+}
+
+function escapeHtml(text){
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function plural(count, word){
+  return count + " " + word + (count === 1 ? "" : "s");
+}
+
+function activeTasks(){
+  return S.tasks.filter(function(t){ return t.status !== "archived"; });
+}
+
+function archivedTasks(){
+  return S.tasks.filter(function(t){ return t.status === "archived"; });
+}
+
+function taskComment(task){
+  return task.comment || task.note || "";
+}
+
+function setOrderState(task, value){
+  task.inOrderOfDay = !!value;
+  task.inOrder = !!value;
+}
+
+function touch(task){
+  task.updatedAt = nowIso();
+}
+
+function deleteTask(taskId){
+  pendingDeletes[taskId] = true;
+  savePendingDeletes();
+  S.tasks = S.tasks.filter(function(t){ return t.id !== taskId; });
+  editingTaskId = null;
+  save();
+  render();
+}
+
+function priorityControl(priority){
+  var safe = ["P1", "P2", "P3"].indexOf(priority) >= 0 ? priority : "P3";
+  return ""
+    + "<select class='priority-select' data-a='priority' aria-label='Change priority'>"
+    +   "<option value='P1'" + (safe === "P1" ? " selected" : "") + ">P1</option>"
+    +   "<option value='P2'" + (safe === "P2" ? " selected" : "") + ">P2</option>"
+    +   "<option value='P3'" + (safe === "P3" ? " selected" : "") + ">P3</option>"
+    + "</select>";
+}
+
+function priorityPill(priority){
+  var safe = ["P1", "P2", "P3"].indexOf(priority) >= 0 ? priority : "P3";
+  return "<span class='badge'>" + safe + "</span>";
+}
+
+function taskCard(task, options){
+  options = options || {};
+  var li = document.createElement("li");
+  var isArchive = options.mode === "archive";
+  if (!isArchive && editingTaskId === task.id) return taskEditCard(task, li);
+  var priority = ["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P3";
+  var completed = task.completedAt ? new Date(task.completedAt) : null;
+  li.className = "task" + (isArchive ? " archived" : "");
+  li.draggable = !isArchive;
+  li.dataset.id = task.id;
+  li.innerHTML = ""
+    + "<div class='task-left'>"
+    +   (options.mode === "order" ? "<div class='rank'>" + String(options.index + 1).padStart(2, "0") + "</div>" : "")
+    +   (!isArchive ? "<input class='check' type='checkbox' aria-label='Archive task'>" : "")
+    + "</div>"
+    + "<div class='body'>"
+    +   "<div class='label'>" + escapeHtml(task.title) + "</div>"
+    +   (taskComment(task) ? "<div class='note'>" + escapeHtml(taskComment(task)) + "</div>" : "")
+    +   "<div class='meta-row'>"
+    +     "<span class='subtle'>" + escapeHtml(task.topic) + " / " + escapeHtml(task.subtopic) + "</span>"
+    +     (task.inOrderOfDay && options.mode !== "order" && !isArchive ? "<span class='order-state'>In Order</span>" : "")
+    +     (isArchive && completed ? "<span class='subtle'>Completed " + escapeHtml(formatTime(completed)) + "</span>" : "")
+    +   "</div>"
+    + "</div>"
+    + "<div class='task-right'>"
+    +   "<div class='actions'>"
+    +     (!isArchive ? "<button class='icon-btn' data-a='move'>" + (task.inOrderOfDay ? "Remove from Order" : "Add to Order") + "</button>" : "")
+    +     (!isArchive ? "<button class='icon-btn' data-a='edit'>Edit</button>" : "")
+    +     (!isArchive ? "<button class='icon-btn' data-a='del'>Delete</button>" : "<button class='icon-btn' data-a='restore'>Restore</button>")
+    +   "</div>"
+    +   (isArchive ? priorityPill(priority) : priorityControl(priority))
+    + "</div>";
+
+  if (!isArchive) {
+    li.querySelector(".check").addEventListener("change", function(){
+      archiveTask(task.id);
+    });
+  }
+
+  var prioritySelect = li.querySelector("[data-a='priority']");
+  if (prioritySelect) {
+    prioritySelect.addEventListener("mousedown", function(e){ e.stopPropagation(); });
+    prioritySelect.addEventListener("click", function(e){ e.stopPropagation(); });
+    prioritySelect.addEventListener("change", function(){
+      task.priority = prioritySelect.value;
+      touch(task);
+      save();
+      render();
+    });
+  }
+
+  var moveBtn = li.querySelector("[data-a='move']");
+  if (moveBtn) {
+    moveBtn.addEventListener("click", function(){
+      if (task.inOrderOfDay) {
+        setOrderState(task, false);
+      } else {
+        S.tasks = S.tasks.filter(function(t){ return t.id !== task.id; });
+        setOrderState(task, true);
+        S.tasks.push(task);
+      }
+      touch(task);
+      save(); render();
+    });
+  }
+
+  var delBtn = li.querySelector("[data-a='del']");
+  if (delBtn) {
+    delBtn.addEventListener("click", function(){
+      deleteTask(task.id);
+    });
+  }
+
+  var editBtn = li.querySelector("[data-a='edit']");
+  if (editBtn) {
+    editBtn.addEventListener("click", function(){
+      editingTaskId = task.id;
+      render();
+    });
+  }
+
+  var restoreBtn = li.querySelector("[data-a='restore']");
+  if (restoreBtn) {
+    restoreBtn.addEventListener("click", function(){
+      restoreTask(task.id);
+    });
+  }
+
+  if (!isArchive) {
+    li.addEventListener("dragstart", function(){
+      dragTaskId = task.id;
+      li.classList.add("drag");
+    });
+    li.addEventListener("dragend", function(){
+      dragTaskId = null;
+      li.classList.remove("drag");
+      document.querySelectorAll(".task-list").forEach(function(list){ list.classList.remove("drop"); });
+    });
+  }
+  return li;
+}
+
+function taskEditCard(task, li){
+  var priority = ["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P3";
+  li.className = "task editing";
+  li.draggable = false;
+  li.dataset.id = task.id;
+  li.innerHTML = ""
+    + "<div class='body'>"
+    +   "<form class='edit-form'>"
+    +     "<input class='fi' name='title' value='" + escapeHtml(task.title) + "' required>"
+    +     "<input class='fi' name='comment' value='" + escapeHtml(taskComment(task)) + "' placeholder='Comment'>"
+    +     "<div class='edit-grid'>"
+    +       "<input class='fi' name='topic' value='" + escapeHtml(task.topic) + "' placeholder='Theme'>"
+    +       "<input class='fi' name='subtopic' value='" + escapeHtml(task.subtopic) + "' placeholder='Subtopic'>"
+    +       "<select class='fi' name='priority'>"
+    +         "<option value='P1'" + (task.priority === "P1" ? " selected" : "") + ">P1</option>"
+    +         "<option value='P2'" + (task.priority === "P2" ? " selected" : "") + ">P2</option>"
+    +         "<option value='P3'" + (task.priority === "P3" ? " selected" : "") + ">P3</option>"
+    +       "</select>"
+    +       "<div class='actions'>"
+    +         "<button class='icon-btn' type='submit'>Save</button>"
+    +         "<button class='icon-btn' type='button' data-a='cancel'>Cancel</button>"
+    +       "</div>"
+    +     "</div>"
+    +   "</form>"
+    + "</div>";
+
+  var form = li.querySelector(".edit-form");
+  var titleInput = form.querySelector("[name='title']");
+  setTimeout(function(){
+    titleInput.focus();
+    titleInput.select();
+  }, 0);
+
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    var fd = new FormData(form);
+    var title = String(fd.get("title") || "").trim();
+    if (!title) return;
+    var priority = String(fd.get("priority") || "P2").toUpperCase();
+    if (["P1", "P2", "P3"].indexOf(priority) === -1) priority = "P2";
+    task.title = title;
+    task.comment = String(fd.get("comment") || "").trim();
+    task.note = task.comment;
+    task.topic = String(fd.get("topic") || "").trim() || "General";
+    task.theme = task.topic;
+    task.subtopic = String(fd.get("subtopic") || "").trim() || "General";
+    task.priority = priority;
+    touch(task);
+    editingTaskId = null;
+    save();
+    render();
+  });
+
+  li.querySelector("[data-a='cancel']").addEventListener("click", function(){
+    editingTaskId = null;
+    render();
+  });
+
+  form.addEventListener("keydown", function(e){
+    if (e.key === "Escape") {
+      e.preventDefault();
+      editingTaskId = null;
+      render();
+    }
+  });
+
+  return li;
+}
+
+function setupDrop(listEl, context){
+  listEl.ondragover = function(e){
+    if (!dragTaskId) return;
+    e.preventDefault();
+    listEl.classList.add("drop");
+  };
+  listEl.ondragleave = function(){
+    listEl.classList.remove("drop");
+  };
+  listEl.ondrop = function(e){
+    if (!dragTaskId) return;
+    e.preventDefault();
+    listEl.classList.remove("drop");
+    var over = e.target.closest(".task");
+    var overId = (over && over.parentElement === listEl) ? over.dataset.id : null;
+    moveTaskToList(dragTaskId, context, overId);
+    save();
+    render();
+  };
+}
+
+function moveTaskToList(taskId, context, overId){
+  var t = S.tasks.find(function(x){ return x.id === taskId; });
+  if (!t || t.status === "archived") return;
+  if (typeof context.inOrderOfDay === "boolean") setOrderState(t, context.inOrderOfDay);
+  if (context.topic) {
+    t.topic = context.topic;
+    t.theme = context.topic;
+  }
+  if (context.subtopic) t.subtopic = context.subtopic;
+  touch(t);
+
+  var inTarget = S.tasks.filter(function(x){
+    if (x.status === "archived") return false;
+    if (context.scope === "order") return x.inOrderOfDay;
+    return x.topic === context.topic && x.subtopic === context.subtopic;
+  }).filter(function(x){ return x.id !== taskId; });
+
+  var idx = inTarget.length;
+  if (overId) {
+    var found = inTarget.findIndex(function(x){ return x.id === overId; });
+    if (found >= 0) idx = found;
+  }
+  inTarget.splice(idx, 0, t);
+
+  var outTarget = S.tasks.filter(function(x){
+    if (x.id === taskId) return false;
+    if (x.status === "archived") return true;
+    if (context.scope === "order") return !x.inOrderOfDay || x.status === "archived";
+    return !(x.topic === context.topic && x.subtopic === context.subtopic);
+  });
+  S.tasks = outTarget.concat(inTarget);
+}
+
+function renderOrder(){
+  var ul = document.getElementById("lista-ordem");
+  ul.innerHTML = "";
+  var items = activeTasks().filter(function(t){ return t.inOrderOfDay; });
+  items.forEach(function(t, index){ ul.appendChild(taskCard(t, { mode: "order", index: index })); });
+  setupDrop(ul, { scope: "order", inOrderOfDay: true });
+  renderOrderPicker();
+  document.getElementById("order-empty").style.display = items.length ? "none" : "block";
+  document.getElementById("order-count").textContent = plural(items.length, "item") + " in order";
+}
+
+function renderOrderPicker(){
+  var select = document.getElementById("existing-order-select");
+  var button = document.querySelector("#form-existing-order button");
+  select.innerHTML = "";
+  var available = activeTasks().filter(function(t){ return !t.inOrderOfDay; });
+  if (!available.length) {
+    var empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "All tasks are already in Order";
+    select.appendChild(empty);
+    select.disabled = true;
+    button.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  button.disabled = false;
+  available.forEach(function(task){
+    var option = document.createElement("option");
+    option.value = task.id;
+    option.textContent = task.title + " - " + task.topic + " / " + task.subtopic;
+    select.appendChild(option);
+  });
+}
+
+function renderAreas(){
+  var root = document.getElementById("areas");
+  root.innerHTML = "";
+  var areaTasks = activeTasks();
+  var grouped = {};
+  areaTasks.forEach(function(t){
+    if (!grouped[t.topic]) grouped[t.topic] = {};
+    if (!grouped[t.topic][t.subtopic]) grouped[t.topic][t.subtopic] = [];
+    grouped[t.topic][t.subtopic].push(t);
+  });
+
+  Object.keys(grouped).sort().forEach(function(topic){
+    var total = Object.keys(grouped[topic]).reduce(function(sum, subtopic){
+      return sum + grouped[topic][subtopic].length;
+    }, 0);
+    var collapsed = !!collapsedTopics[topic];
+    var topicWrap = document.createElement("div");
+    topicWrap.className = "topic";
+    var header = document.createElement("div");
+    header.className = "topic-header";
+    header.innerHTML = ""
+      + "<div class='topic-title'>"
+      +   "<button class='collapse-btn' type='button' aria-expanded='" + (!collapsed) + "'>" + (collapsed ? "Show" : "Hide") + "</button>"
+      +   "<h3>" + escapeHtml(topic) + "</h3>"
+      + "</div>"
+      + "<div class='topic-count'>" + (collapsed ? "0" : total) + "/" + total + " visible</div>";
+    header.querySelector(".collapse-btn").addEventListener("click", function(){
+      collapsedTopics[topic] = !collapsedTopics[topic];
+      saveCollapsed();
+      renderAreas();
+    });
+    topicWrap.appendChild(header);
+
+    if (collapsed) {
+      root.appendChild(topicWrap);
+      return;
+    }
+
+    Object.keys(grouped[topic]).sort().forEach(function(subtopic){
+      var sub = document.createElement("div");
+      sub.className = "subtopic";
+      sub.innerHTML = "<div class='subtopic-title'>" + escapeHtml(subtopic) + "</div>";
+      var ul = document.createElement("ul");
+      ul.className = "task-list";
+      grouped[topic][subtopic].forEach(function(t){ ul.appendChild(taskCard(t, { mode: "tasks" })); });
+      setupDrop(ul, { scope: "tasks", topic: topic, subtopic: subtopic });
+      sub.appendChild(ul);
+      topicWrap.appendChild(sub);
+    });
+    root.appendChild(topicWrap);
+  });
+  document.getElementById("tasks-empty").style.display = areaTasks.length ? "none" : "block";
+  document.getElementById("tasks-count").textContent = plural(areaTasks.length, "task");
+}
+
+function renderQuickThemeOptions(){
+  var select = document.getElementById("quick-theme-select");
+  if (!select) return;
+  var current = select.value || "General";
+  var themes = {};
+  themes.General = true;
+  S.tasks.forEach(function(task){ themes[task.topic || "General"] = true; });
+  select.innerHTML = "";
+  Object.keys(themes).sort().forEach(function(theme){
+    var option = document.createElement("option");
+    option.value = theme;
+    option.textContent = theme;
+    if (theme === current) option.selected = true;
+    select.appendChild(option);
+  });
+  if (!themes[current]) select.value = "General";
+}
+
+function dateKey(date){
+  var year = date.getFullYear();
+  var month = String(date.getMonth() + 1).padStart(2, "0");
+  var day = String(date.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
+}
+
+function formatDateHeading(key){
+  var parts = key.split("-");
+  var date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  return date.toLocaleDateString("en-US", { weekday:"long", month:"short", day:"2-digit", year:"numeric" });
+}
+
+function formatTime(date){
+  return date.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit" });
+}
+
+function renderArchived(){
+  var root = document.getElementById("archive-groups");
+  var filter = document.getElementById("archive-date-filter").value;
+  root.innerHTML = "";
+  var items = archivedTasks().slice().sort(function(a, b){
+    return String(b.completedAt || b.archivedAt || "").localeCompare(String(a.completedAt || a.archivedAt || ""));
+  });
+  if (filter) {
+    items = items.filter(function(task){
+      var stamp = task.completedAt || task.archivedAt;
+      return stamp && dateKey(new Date(stamp)) === filter;
+    });
+  }
+  var grouped = {};
+  items.forEach(function(task){
+    var stamp = task.completedAt || task.archivedAt || task.updatedAt || task.createdAt || nowIso();
+    var key = dateKey(new Date(stamp));
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(task);
+  });
+  Object.keys(grouped).sort().reverse().forEach(function(key){
+    var title = document.createElement("div");
+    title.className = "archive-date";
+    title.textContent = formatDateHeading(key);
+    root.appendChild(title);
+    var ul = document.createElement("ul");
+    ul.className = "task-list";
+    grouped[key].forEach(function(task){ ul.appendChild(taskCard(task, { mode: "archive" })); });
+    root.appendChild(ul);
+  });
+  document.getElementById("archive-empty").style.display = items.length ? "none" : "block";
+  document.getElementById("archived-count").textContent = filter ? plural(items.length, "task") + " on date" : plural(archivedTasks().length, "task") + " archived";
+}
+
+function bindForms(){
+  document.getElementById("sign-out").addEventListener("click", function(){
+    signOut();
+  });
+
+  document.querySelectorAll("[data-tab]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      activeTab = btn.dataset.tab === "order" || btn.dataset.tab === "archived" ? btn.dataset.tab : "tasks";
+      editingTaskId = null;
+      saveTab();
+      render();
+    });
+  });
+
+  document.getElementById("form-ordem").addEventListener("submit", function(e){
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var title = String(fd.get("titulo") || "").trim();
+    if (!title) return;
+    var priority = String(fd.get("prioridade") || "P2").toUpperCase();
+    if (["P1", "P2", "P3"].indexOf(priority) === -1) priority = "P2";
+    S.tasks.push({
+      id: uid(),
+      title: title,
+      comment: String(fd.get("comment") || "").trim(),
+      note: String(fd.get("comment") || "").trim(),
+      priority: priority,
+      topic: String(fd.get("topico") || "General").trim() || "General",
+      theme: String(fd.get("topico") || "General").trim() || "General",
+      subtopic: "General",
+      inOrderOfDay: true,
+      inOrder: true,
+      status: "active",
+      done: false,
+      completedAt: null,
+      archivedAt: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    });
+    e.target.reset();
+    save(); render();
+  });
+
+  document.getElementById("form-existing-order").addEventListener("submit", function(e){
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var taskId = String(fd.get("taskId") || "");
+    var task = S.tasks.find(function(t){ return t.id === taskId; });
+    if (!task || task.inOrderOfDay) return;
+    S.tasks = S.tasks.filter(function(t){ return t.id !== taskId; });
+    setOrderState(task, true);
+    touch(task);
+    S.tasks.push(task);
+    save();
+    render();
+  });
+
+  document.getElementById("form-area").addEventListener("submit", function(e){
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var title = String(fd.get("titulo") || "").trim();
+    var topic = String(fd.get("topico") || "").trim();
+    if (!title) return;
+    var priority = String(fd.get("prioridade") || "P2").toUpperCase();
+    if (["P1", "P2", "P3"].indexOf(priority) === -1) priority = "P2";
+    var stamp = nowIso();
+    S.tasks.push({
+      id: uid(),
+      title: title,
+      comment: String(fd.get("comment") || "").trim(),
+      note: String(fd.get("comment") || "").trim(),
+      priority: priority,
+      topic: topic || "General",
+      theme: topic || "General",
+      subtopic: "General",
+      inOrderOfDay: false,
+      inOrder: false,
+      status: "active",
+      done: false,
+      completedAt: null,
+      archivedAt: null,
+      createdAt: stamp,
+      updatedAt: stamp
+    });
+    e.target.reset();
+    document.getElementById("quick-theme-select").value = "General";
+    save(); render();
+  });
+
+  document.getElementById("archive-date-filter").addEventListener("change", function(){
+    renderArchived();
+  });
+
+  document.getElementById("archive-clear-filter").addEventListener("click", function(){
+    document.getElementById("archive-date-filter").value = "";
+    renderArchived();
+  });
+
+  document.getElementById("toast-undo").addEventListener("click", function(){
+    undoArchive();
+  });
+}
+
+function archiveTask(taskId){
+  var index = S.tasks.findIndex(function(t){ return t.id === taskId; });
+  if (index < 0) return;
+  var task = S.tasks[index];
+  var previous = JSON.parse(JSON.stringify(task));
+  var stamp = nowIso();
+  task.status = "archived";
+  task.done = true;
+  task.completedAt = stamp;
+  task.archivedAt = stamp;
+  setOrderState(task, false);
+  touch(task);
+  lastArchiveUndo = { task: previous, index: index };
+  editingTaskId = null;
+  save();
+  render();
+  showToast();
+}
+
+function undoArchive(){
+  if (!lastArchiveUndo) return;
+  var copy = normalizeTask(JSON.parse(JSON.stringify(lastArchiveUndo.task)));
+  var currentIndex = S.tasks.findIndex(function(t){ return t.id === copy.id; });
+  if (currentIndex >= 0) {
+    S.tasks[currentIndex] = copy;
+  } else {
+    S.tasks.splice(Math.min(lastArchiveUndo.index, S.tasks.length), 0, copy);
+  }
+  lastArchiveUndo = null;
+  save();
+  hideToast();
+  render();
+}
+
+function restoreTask(taskId){
+  var task = S.tasks.find(function(t){ return t.id === taskId; });
+  if (!task) return;
+  task.status = "active";
+  task.done = false;
+  task.completedAt = null;
+  task.archivedAt = null;
+  setOrderState(task, false);
+  touch(task);
+  save();
+  render();
+}
+
+function setAccessStatus(message, isError){
+  var el = document.getElementById("access-status");
+  if (!el) return;
+  el.textContent = message || "";
+  el.classList.toggle("error", !!isError);
+}
+
+function setSyncStatus(message){
+  var el = document.getElementById("sync-status");
+  if (el) el.textContent = message || "";
+}
+
+function initSupabaseClient(){
+  if (sb) return true;
+  if (!window.supabase || !SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
+    setAccessStatus("Supabase is not configured yet.", true);
+    return false;
+  }
+  sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+  return true;
+}
+
+async function hashPhrase(value){
+  var data = new TextEncoder().encode(value);
+  var digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.prototype.map.call(new Uint8Array(digest), function(byte){
+    return byte.toString(16).padStart(2, "0");
+  }).join("");
+}
+
+function isGateUnlocked(){
+  try{ return sessionStorage.getItem("warroom_gate_unlocked") === "1"; } catch(e){ return false; }
+}
+
+function markGateUnlocked(){
+  try{ sessionStorage.setItem("warroom_gate_unlocked", "1"); } catch(e){}
+}
+
+async function initAccessGate(){
+  var form = document.getElementById("gate-form");
+  var pass = document.getElementById("gate-passphrase");
+  var reset = document.getElementById("gate-reset");
+  var savedHash = localStorage.getItem(GATE_HASH_KEY);
+  pass.placeholder = savedHash ? "Access phrase" : "Create local access phrase";
+  setAccessStatus(savedHash ? "Enter the local access phrase for this browser." : "Create a local access phrase for this browser.");
+
+  reset.addEventListener("click", function(){
+    localStorage.removeItem(GATE_HASH_KEY);
+    try{ sessionStorage.removeItem("warroom_gate_unlocked"); } catch(e){}
+    pass.value = "";
+    pass.placeholder = "Create local access phrase";
+    setAccessStatus("Local gate reset. Create a new browser-local phrase.");
+  });
+
+  form.addEventListener("submit", async function(e){
+    e.preventDefault();
+    var phrase = pass.value;
+    if (!phrase) return;
+    var currentHash = localStorage.getItem(GATE_HASH_KEY);
+    var hash = await hashPhrase(phrase);
+    if (!currentHash) {
+      localStorage.setItem(GATE_HASH_KEY, hash);
+      markGateUnlocked();
+      pass.value = "";
+      showAuthStep("Local gate created. Sign in to unlock data.");
+      return;
+    }
+    if (hash !== currentHash) {
+      setAccessStatus("Access phrase does not match this browser.", true);
+      return;
+    }
+    markGateUnlocked();
+    pass.value = "";
+    showAuthStep("Local gate passed. Sign in to unlock data.");
+  });
+
+  bindAuthForm();
+  if (isGateUnlocked()) showAuthStep("Local gate passed. Checking session...");
+}
+
+function showAuthStep(message){
+  document.getElementById("gate-step").hidden = true;
+  document.getElementById("auth-step").hidden = false;
+  setAccessStatus(message || "");
+  checkAuthSession();
+}
+
+function bindAuthForm(){
+  var form = document.getElementById("auth-form");
+  form.addEventListener("submit", async function(e){
+    e.preventDefault();
+    if (!initSupabaseClient()) return;
+    var email = String(document.getElementById("auth-email").value || "").trim();
+    if (!email) return;
+    setAccessStatus("Sending magic link...");
+    var redirectTo = window.location.href.split("#")[0];
+    var result = await sb.auth.signInWithOtp({
+      email: email,
+      options: { emailRedirectTo: redirectTo }
+    });
+    if (result.error) {
+      setAccessStatus(result.error.message, true);
+      return;
+    }
+    setAccessStatus("Magic link sent. Open it in this browser to continue.");
+  });
+}
+
+async function checkAuthSession(){
+  if (!initSupabaseClient()) return;
+  var result = await sb.auth.getSession();
+  if (result.error) {
+    setAccessStatus(result.error.message, true);
+    return;
+  }
+  sb.auth.onAuthStateChange(function(event, session){
+    if (session && session.user) startApp(session);
+  });
+  if (result.data.session && result.data.session.user) {
+    startApp(result.data.session);
+  } else {
+    setAccessStatus("Enter your email and use the magic link to open War Room.");
+  }
+}
+
+function localToRemote(task, index){
+  var priority = ["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P2";
+  return {
+    user_id: currentUser.id,
+    client_id: task.id,
+    title: task.title || "Untitled",
+    comment: taskComment(task) || null,
+    theme: task.topic || task.theme || "General",
+    subtopic: task.subtopic || "General",
+    priority: priority,
+    in_order: !!task.inOrderOfDay,
+    status: task.status === "archived" ? "archived" : "active",
+    order_index: index,
+    created_at: task.createdAt || nowIso(),
+    updated_at: task.updatedAt || nowIso(),
+    completed_at: task.completedAt || null,
+    archived_at: task.archivedAt || null,
+    raw: {
+      note: task.note || task.comment || "",
+      topic: task.topic || task.theme || "General",
+      inOrderOfDay: !!task.inOrderOfDay,
+      inOrder: !!task.inOrder
+    }
+  };
+}
+
+function remoteToLocal(row){
+  return normalizeTask({
+    id: row.client_id || row.id,
+    remoteId: row.id,
+    title: row.title,
+    comment: row.comment || "",
+    note: row.comment || (row.raw && row.raw.note) || "",
+    priority: row.priority || "P2",
+    topic: row.theme || (row.raw && row.raw.topic) || "General",
+    theme: row.theme || "General",
+    subtopic: row.subtopic || "General",
+    inOrderOfDay: !!row.in_order,
+    inOrder: !!row.in_order,
+    status: row.status || "active",
+    done: row.status === "archived",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+    archivedAt: row.archived_at
+  });
+}
+
+async function fetchRemoteTasks(silent){
+  if (!currentUser || !sb) return;
+  if (!silent) setSyncStatus("Syncing...");
+  var result = await sb
+    .from(SUPABASE_CONFIG.table)
+    .select("*")
+    .order("order_index", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (result.error) {
+    setSyncStatus("Local cache");
+    if (!silent) setAccessStatus(result.error.message, true);
+    return;
+  }
+  isApplyingRemote = true;
+  S.tasks = (result.data || []).map(remoteToLocal);
+  saveLocalOnly();
+  isApplyingRemote = false;
+  setSyncStatus("Synced");
+  render();
+}
+
+async function pushLocalToSupabase(){
+  if (!currentUser || !sb || isApplyingRemote) return;
+  if (isSyncing) {
+    needsSyncAgain = true;
+    return;
+  }
+  isSyncing = true;
+  setSyncStatus("Saving...");
+  var deleteIds = Object.keys(pendingDeletes);
+  if (deleteIds.length) {
+    var del = await sb
+      .from(SUPABASE_CONFIG.table)
+      .delete()
+      .eq("user_id", currentUser.id)
+      .in("client_id", deleteIds);
+    if (del.error) {
+      isSyncing = false;
+      setSyncStatus("Save pending");
+      return;
+    }
+    pendingDeletes = {};
+    savePendingDeletes();
+  }
+  var rows = S.tasks.map(localToRemote);
+  if (rows.length) {
+    var upsert = await sb
+      .from(SUPABASE_CONFIG.table)
+      .upsert(rows, { onConflict: "user_id,client_id" });
+    if (upsert.error) {
+      isSyncing = false;
+      setSyncStatus("Save pending");
+      return;
+    }
+  }
+  isSyncing = false;
+  setSyncStatus("Synced");
+  if (needsSyncAgain) {
+    needsSyncAgain = false;
+    scheduleSync();
+  }
+}
+
+function scheduleSync(){
+  if (!syncReady || !currentUser) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(function(){ pushLocalToSupabase(); }, 250);
+}
+
+async function hydrateFromSupabase(){
+  setSyncStatus("Syncing...");
+  var importKey = IMPORT_PREFIX + currentUser.id;
+  var localTasks = S.tasks.slice();
+  var remote = await sb
+    .from(SUPABASE_CONFIG.table)
+    .select("*")
+    .order("order_index", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (remote.error) {
+    syncReady = false;
+    setSyncStatus("Local cache");
+    render();
+    return;
+  }
+  if (!localStorage.getItem(importKey) && localTasks.length && !(remote.data || []).length) {
+    var rows = localTasks.map(function(task, index){ return localToRemote(task, index); });
+    var imported = await sb
+      .from(SUPABASE_CONFIG.table)
+      .upsert(rows, { onConflict: "user_id,client_id" });
+    if (!imported.error) localStorage.setItem(importKey, "1");
+  } else if (!localStorage.getItem(importKey)) {
+    localStorage.setItem(importKey, "1");
+  }
+  syncReady = true;
+  await fetchRemoteTasks(true);
+}
+
+function subscribeRealtime(){
+  if (!currentUser || !sb) return;
+  if (realtimeChannel) sb.removeChannel(realtimeChannel);
+  realtimeChannel = sb
+    .channel("war-room-tasks-" + currentUser.id)
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: SUPABASE_CONFIG.table,
+      filter: "user_id=eq." + currentUser.id
+    }, function(){
+      if (!isSyncing) fetchRemoteTasks(true);
+    })
+    .subscribe();
+}
+
+async function startApp(session){
+  if (currentUser && currentUser.id === session.user.id && syncReady) return;
+  currentUser = session.user;
+  document.getElementById("session-email").textContent = currentUser.email || "";
+  document.getElementById("access-screen").hidden = true;
+  document.getElementById("app-shell").hidden = false;
+  await hydrateFromSupabase();
+  subscribeRealtime();
+}
+
+async function signOut(){
+  syncReady = false;
+  currentUser = null;
+  if (realtimeChannel && sb) {
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  if (sb) await sb.auth.signOut();
+  document.getElementById("app-shell").hidden = true;
+  document.getElementById("access-screen").hidden = false;
+  document.getElementById("gate-step").hidden = isGateUnlocked();
+  document.getElementById("auth-step").hidden = !isGateUnlocked();
+  setAccessStatus("Signed out.");
+}
+
+function showToast(){
+  var toast = document.getElementById("toast");
+  document.getElementById("toast-message").textContent = "Task concluded";
+  toast.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){
+    hideToast();
+    lastArchiveUndo = null;
+  }, 6500);
+}
+
+function hideToast(){
+  var toast = document.getElementById("toast");
+  toast.classList.remove("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = null;
+}
+
+function render(){
+  renderQuickThemeOptions();
+  document.getElementById("data-atual").textContent = fmtDate();
+  var st = stats();
+  document.getElementById("resumo").textContent = st.active + " active / " + st.archived + " archived";
+  document.querySelectorAll("[data-tab]").forEach(function(btn){
+    btn.classList.toggle("active", btn.dataset.tab === activeTab);
+  });
+  document.getElementById("view-tasks").classList.toggle("active", activeTab === "tasks");
+  document.getElementById("view-order").classList.toggle("active", activeTab === "order");
+  document.getElementById("view-archived").classList.toggle("active", activeTab === "archived");
+  if (activeTab === "order") renderOrder();
+  else if (activeTab === "archived") renderArchived();
+  else renderAreas();
+}
+
+load();
+loadTab();
+loadCollapsed();
+loadPendingDeletes();
+bindForms();
+initAccessGate();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.DS_Store
+.claude/
+.env
+.env.*
+.supabase/
+supabase/.temp/
+node_modules/
+index_backup_original.html
+index_before_*.html
