@@ -274,6 +274,7 @@ var TAB_KEY = "warroom_active_tab";
 var COLLAPSE_KEY = "warroom_collapsed_topics";
 var PENDING_DELETE_KEY = "warroom_pending_deletes";
 var GATE_HASH_KEY = "warroom_gate_hash";
+var GATE_UNLOCKED_KEY = "warroom_gate_unlocked";
 var IMPORT_PREFIX = "warroom_imported_";
 var S = null;
 var dragTaskId = null;
@@ -291,6 +292,7 @@ var isSyncing = false;
 var needsSyncAgain = false;
 var realtimeChannel = null;
 var pendingDeletes = {};
+var authListenerBound = false;
 
 function uid(){ return Math.random().toString(36).slice(2,9); }
 
@@ -1055,8 +1057,34 @@ function initSupabaseClient(){
     setAccessStatus("Supabase is not configured yet.", true);
     return false;
   }
-  sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+  sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
   return true;
+}
+
+function bindAuthListener(){
+  if (authListenerBound || !initSupabaseClient()) return;
+  authListenerBound = true;
+  sb.auth.onAuthStateChange(function(event, session){
+    if (session && session.user && isGateUnlocked()) {
+      startApp(session);
+      return;
+    }
+    if (event === "SIGNED_OUT") {
+      currentUser = null;
+      syncReady = false;
+      document.getElementById("app-shell").hidden = true;
+      document.getElementById("access-screen").hidden = false;
+      if (isGateUnlocked()) {
+        showAuthStep("Signed out. Enter your email to sign in again.");
+      }
+    }
+  });
 }
 
 async function hashPhrase(value){
@@ -1068,26 +1096,36 @@ async function hashPhrase(value){
 }
 
 function isGateUnlocked(){
-  try{ return sessionStorage.getItem("warroom_gate_unlocked") === "1"; } catch(e){ return false; }
+  try{
+    return localStorage.getItem(GATE_UNLOCKED_KEY) === "1"
+      || sessionStorage.getItem(GATE_UNLOCKED_KEY) === "1";
+  } catch(e){
+    return false;
+  }
 }
 
 function markGateUnlocked(){
-  try{ sessionStorage.setItem("warroom_gate_unlocked", "1"); } catch(e){}
+  try{ localStorage.setItem(GATE_UNLOCKED_KEY, "1"); } catch(e){}
+  try{ sessionStorage.setItem(GATE_UNLOCKED_KEY, "1"); } catch(e){}
 }
 
 async function initAccessGate(){
+  initSupabaseClient();
+  bindAuthListener();
   var form = document.getElementById("gate-form");
   var pass = document.getElementById("gate-passphrase");
   var reset = document.getElementById("gate-reset");
   var savedHash = localStorage.getItem(GATE_HASH_KEY);
   pass.placeholder = savedHash ? "Access phrase" : "Create local access phrase";
-  setAccessStatus(savedHash ? "Enter the local access phrase for this browser." : "Create a local access phrase for this browser.");
 
   reset.addEventListener("click", function(){
     localStorage.removeItem(GATE_HASH_KEY);
-    try{ sessionStorage.removeItem("warroom_gate_unlocked"); } catch(e){}
+    try{ localStorage.removeItem(GATE_UNLOCKED_KEY); } catch(e){}
+    try{ sessionStorage.removeItem(GATE_UNLOCKED_KEY); } catch(e){}
     pass.value = "";
     pass.placeholder = "Create local access phrase";
+    document.getElementById("gate-step").hidden = false;
+    document.getElementById("auth-step").hidden = true;
     setAccessStatus("Local gate reset. Create a new browser-local phrase.");
   });
 
@@ -1101,7 +1139,7 @@ async function initAccessGate(){
       localStorage.setItem(GATE_HASH_KEY, hash);
       markGateUnlocked();
       pass.value = "";
-      showAuthStep("Local gate created. Sign in to unlock data.");
+      await bootstrapAuthSession("Local gate created. Checking session...");
       return;
     }
     if (hash !== currentHash) {
@@ -1110,18 +1148,21 @@ async function initAccessGate(){
     }
     markGateUnlocked();
     pass.value = "";
-    showAuthStep("Local gate passed. Sign in to unlock data.");
+    await bootstrapAuthSession("Local gate passed. Checking session...");
   });
 
   bindAuthForm();
-  if (isGateUnlocked()) showAuthStep("Local gate passed. Checking session...");
+  if (isGateUnlocked()) {
+    await bootstrapAuthSession("Checking saved session...");
+    return;
+  }
+  setAccessStatus(savedHash ? "Enter the local access phrase for this browser." : "Create a local access phrase for this browser.");
 }
 
 function showAuthStep(message){
   document.getElementById("gate-step").hidden = true;
   document.getElementById("auth-step").hidden = false;
   setAccessStatus(message || "");
-  checkAuthSession();
 }
 
 function bindAuthForm(){
@@ -1146,19 +1187,25 @@ function bindAuthForm(){
 }
 
 async function checkAuthSession(){
+  return bootstrapAuthSession("Checking saved session...");
+}
+
+async function bootstrapAuthSession(message){
   if (!initSupabaseClient()) return;
+  bindAuthListener();
+  document.getElementById("gate-step").hidden = true;
+  document.getElementById("auth-step").hidden = true;
+  setAccessStatus(message || "Checking saved session...");
   var result = await sb.auth.getSession();
   if (result.error) {
-    setAccessStatus(result.error.message, true);
+    showAuthStep(result.error.message);
+    document.getElementById("access-status").classList.add("error");
     return;
   }
-  sb.auth.onAuthStateChange(function(event, session){
-    if (session && session.user) startApp(session);
-  });
   if (result.data.session && result.data.session.user) {
-    startApp(result.data.session);
+    await startApp(result.data.session);
   } else {
-    setAccessStatus("Enter your email and use the magic link to open War Room.");
+    showAuthStep("Enter your email and use the magic link to open War Room.");
   }
 }
 
@@ -1343,9 +1390,13 @@ async function signOut(){
   if (sb) await sb.auth.signOut();
   document.getElementById("app-shell").hidden = true;
   document.getElementById("access-screen").hidden = false;
-  document.getElementById("gate-step").hidden = isGateUnlocked();
-  document.getElementById("auth-step").hidden = !isGateUnlocked();
-  setAccessStatus("Signed out.");
+  if (isGateUnlocked()) {
+    showAuthStep("Signed out. Enter your email to sign in again.");
+  } else {
+    document.getElementById("gate-step").hidden = false;
+    document.getElementById("auth-step").hidden = true;
+    setAccessStatus("Signed out.");
+  }
 }
 
 function showToast(){

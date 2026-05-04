@@ -2,6 +2,27 @@
 
 ---
 
+## Auth Session Persistence Fix - 2026-05-04
+
+**Implemented by:** Codex
+**Files modified:** `index.html`, `docs/IMPLEMENTATION_LOG.md`
+
+### What Changed
+
+- Supabase client initialization now explicitly enables `persistSession`, `autoRefreshToken`, and `detectSessionInUrl`.
+- The boot sequence now checks `supabase.auth.getSession()` before showing the email login form.
+- Existing Supabase sessions open War Room directly after the local gate has been passed.
+- The local access gate unlocked state now persists in browser `localStorage` instead of only `sessionStorage`.
+- Existing local access phrase hashes are preserved; no passphrase was hardcoded.
+- Sign out still clears the Supabase session and returns to the login screen.
+
+### Verification
+
+- Inline script syntax check passed with Node.
+- No new service-role or secret keys were added.
+
+---
+
 ## Supabase + GitHub Pages Operationalization - 2026-05-04
 
 **Implemented by:** Codex
