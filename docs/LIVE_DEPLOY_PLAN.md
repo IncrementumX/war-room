@@ -19,7 +19,7 @@ The app asks for a PIN before showing War Room. The expected PIN is stored as a 
 
 - `WAR_ROOM_PIN`
 
-The frontend stores the accepted PIN in browser `localStorage` so the same browser can reopen War Room without asking again. This is convenience, not enterprise security. The real protection is that Supabase is not public and the service-role key only exists inside Cloudflare.
+The frontend stores the accepted PIN in browser `localStorage` under `warroom_pin`, plus trusted-device metadata under `warroom_trusted_device`, so the same browser can reopen War Room without asking again. This is convenience, not enterprise security: anyone with access to that browser profile can reuse the remembered PIN. The real protection is that Supabase is not public, the service-role key only exists inside Cloudflare, and the Worker still validates `X-War-Room-Pin` on every task request.
 
 To rotate the PIN:
 
@@ -28,7 +28,7 @@ cd "/Users/incrementum/Documents/Projects/War Room"
 npx wrangler secret put WAR_ROOM_PIN --config worker/wrangler.toml
 ```
 
-Then use the new PIN in the browser and click `Forget PIN` or `Lock` if an old value is cached.
+Then use the new PIN in the browser and click `Forget PIN` or `Lock` if an old value is cached. Either action clears the remembered-device keys.
 
 ## Worker Secrets
 

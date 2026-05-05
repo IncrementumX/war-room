@@ -2,6 +2,21 @@
 
 ---
 
+## Remembered Device PIN Persistence - 2026-05-04
+
+**Implemented by:** Codex
+**Files modified:** `index.html`, `docs/LIVE_DEPLOY_PLAN.md`, `docs/IMPLEMENTATION_LOG.md`
+
+### What Changed
+
+- Made trusted-device state explicit with `warroom_trusted_device` metadata alongside the remembered `warroom_pin`.
+- Kept Worker/PIN architecture unchanged: the browser still sends `X-War-Room-Pin` on every API request, and the Worker remains the only Supabase service-role holder.
+- Auto-opens remembered browsers/devices after validating the saved PIN through Worker-backed task loading.
+- `Lock` / `Forget PIN` clears remembered local device state.
+- Removed the pre-hydration remote fetch during PIN unlock so first-run local import logic cannot be bypassed by an empty Worker response.
+
+---
+
 ## Worker API + PIN Gate Re-Architecture - 2026-05-04
 
 **Implemented by:** Codex
