@@ -1084,6 +1084,7 @@ async function unlockWithPin(pin, remember){
   setAccessStatus("Checking PIN...");
   currentPin = pin;
   try {
+    await api("/tasks");
     if (remember) rememberDevice(pin);
     await startApp();
   } catch(e) {
