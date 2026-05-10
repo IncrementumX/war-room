@@ -573,6 +573,11 @@ function taskCard(task, options){
     });
   }
 
+  li.addEventListener('dblclick', function(){
+    editingTaskId = task.id;
+    render();
+  });
+
   var restoreBtn = li.querySelector("[data-a='restore']");
   if (restoreBtn) {
     restoreBtn.addEventListener("click", function(){
