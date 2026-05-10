@@ -779,8 +779,8 @@ function renderAreas(){
     header.className = "topic-header";
     header.innerHTML = ""
       + "<div class='topic-title'>"
-      +   "<button class='collapse-btn' type='button' aria-expanded='" + (!collapsed) + "'>" + (collapsed ? "Show" : "Hide") + "</button>"
       +   "<h3>" + escapeHtml(topic) + "</h3>"
+      +   "<button class='collapse-btn' type='button' aria-expanded='" + (!collapsed) + "'>" + (collapsed ? "Show" : "Hide") + "</button>"
       + "</div>"
       + "<div class='topic-count'>" + (collapsed ? "0" : total) + "/" + total + " visible</div>";
     header.querySelector(".collapse-btn").addEventListener("click", function(){
