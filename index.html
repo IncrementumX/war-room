@@ -847,7 +847,7 @@ function renderQuickThemeOptions(){
   var current = select.value;
   var themes = {};
   themes.General = true;
-  S.tasks.forEach(function(task){ themes[task.topic || "General"] = true; });
+  S.tasks.forEach(function(task){ if (task.status !== "archived") themes[task.topic || "General"] = true; });
   select.innerHTML = "";
   Object.keys(themes).sort().forEach(function(theme){
     var option = document.createElement("option");
