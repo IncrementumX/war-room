@@ -981,6 +981,15 @@ function bindForms(){
     }
   });
 
+  document.getElementById("quick-theme-select").addEventListener("change", function(){
+    if (this.value === "__new__") {
+      var newInput = document.getElementById("quick-theme-new");
+      newInput.style.display = "block";
+      this.style.display = "none";
+      newInput.focus();
+    }
+  });
+
   document.getElementById("form-area").addEventListener("submit", function(e){
     e.preventDefault();
     var fd = new FormData(e.target);
