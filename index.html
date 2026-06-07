@@ -806,6 +806,10 @@ function renderAreas(){
     if (delTopicBtn) {
       delTopicBtn.addEventListener("click", function(){
         if (!confirm("Delete all tasks in '" + topic + "'?")) return;
+        S.tasks.forEach(function(t){
+          if ((t.topic || "General") === topic) pendingDeletes[t.id] = true;
+        });
+        savePendingDeletes();
         S.tasks = S.tasks.filter(function(t){ return (t.topic || "General") !== topic; });
         editingTaskId = null;
         editFormSnapshot = null;
@@ -967,27 +971,31 @@ function bindForms(){
     render();
   });
 
-  document.getElementById("quick-theme-new-btn").addEventListener("click", function(){
+  function setQuickThemeMode(showNewInput){
     var newInput = document.getElementById("quick-theme-new");
     var select = document.getElementById("quick-theme-select");
-    if (newInput.style.display === "none") {
+    var btn = document.getElementById("quick-theme-new-btn");
+    if (showNewInput) {
       newInput.style.display = "block";
       select.style.display = "none";
+      btn.textContent = "Cancel";
       newInput.focus();
     } else {
       newInput.style.display = "none";
+      newInput.value = "";
       select.style.display = "block";
-      select.focus();
+      btn.textContent = "+ New";
+      if (select.value === "__new__") select.value = "General";
     }
+  }
+
+  document.getElementById("quick-theme-new-btn").addEventListener("click", function(){
+    var newInput = document.getElementById("quick-theme-new");
+    setQuickThemeMode(newInput.style.display === "none");
   });
 
   document.getElementById("quick-theme-select").addEventListener("change", function(){
-    if (this.value === "__new__") {
-      var newInput = document.getElementById("quick-theme-new");
-      newInput.style.display = "block";
-      this.style.display = "none";
-      newInput.focus();
-    }
+    if (this.value === "__new__") setQuickThemeMode(true);
   });
 
   document.getElementById("form-area").addEventListener("submit", function(e){
@@ -995,13 +1003,10 @@ function bindForms(){
     var fd = new FormData(e.target);
     var title = String(fd.get("titulo") || "").trim();
     var newInput = document.getElementById("quick-theme-new");
-    var select = document.getElementById("quick-theme-select");
     var topic;
     if (newInput && newInput.style.display !== "none") {
       topic = newInput.value.trim();
-      newInput.value = "";
-      newInput.style.display = "none";
-      select.style.display = "block";
+      setQuickThemeMode(false);
     } else {
       topic = String(fd.get("topico") || "").trim();
     }
