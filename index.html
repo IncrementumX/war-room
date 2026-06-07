@@ -525,7 +525,7 @@ function taskCard(task, options){
     +   "<div class='actions'>"
     +     (!isArchive ? "<button class='icon-btn' data-a='move'>" + (task.inOrderOfDay ? "Remove from Order" : "Add to Order") + "</button>" : "")
     +     (!isArchive ? "<button class='icon-btn' data-a='edit'>Edit</button>" : "")
-    +     (!isArchive ? "<button class='icon-btn' data-a='del'>Delete</button>" : "<button class='icon-btn' data-a='restore'>Restore</button>")
+    +     (!isArchive ? "<button class='icon-btn' data-a='del'>Delete</button>" : "<button class='icon-btn' data-a='restore'>Restore</button><button class='icon-btn' data-a='delete-perm'>Delete</button>")
     +   "</div>"
     +   (isArchive ? priorityPill(priority) : priorityControl(priority))
     + "</div>";
@@ -587,6 +587,18 @@ function taskCard(task, options){
   if (restoreBtn) {
     restoreBtn.addEventListener("click", function(){
       restoreTask(task.id);
+    });
+  }
+
+  var deletePermBtn = li.querySelector("[data-a='delete-perm']");
+  if (deletePermBtn) {
+    deletePermBtn.addEventListener("click", function(){
+      if (!confirm("Permanently delete this task?")) return;
+      pendingDeletes[task.id] = true;
+      savePendingDeletes();
+      S.tasks = S.tasks.filter(function(t){ return t.id !== task.id; });
+      save();
+      render();
     });
   }
 
