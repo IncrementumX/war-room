@@ -183,7 +183,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <form id="form-area" class="form quick-form">
           <input class="fi" name="titulo" placeholder="New task" required>
           <input class="fi" name="comment" placeholder="Comment">
-          <select class="fi" id="quick-theme-select" name="topico"></select>
+          <input class="fi" id="quick-theme-select" name="topico" list="theme-datalist" placeholder="Theme" value="General">
+          <datalist id="theme-datalist"></datalist>
           <select class="fi" name="prioridade">
             <option value="P1">P1</option>
             <option value="P2" selected>P2</option>
@@ -268,6 +269,7 @@ var IMPORT_KEY = "warroom_worker_imported";
 var S = null;
 var dragTaskId = null;
 var editingTaskId = null;
+var editFormSnapshot = null;
 var activeTab = "tasks";
 var collapsedTopics = {};
 var lastArchiveUndo = null;
@@ -600,22 +602,27 @@ function taskCard(task, options){
 }
 
 function taskEditCard(task, li){
-  var priority = ["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P3";
+  var snap = editFormSnapshot && editFormSnapshot.id === task.id ? editFormSnapshot : null;
+  var priority = snap && ["P1", "P2", "P3"].indexOf(snap.priority) >= 0 ? snap.priority : (["P1", "P2", "P3"].indexOf(task.priority) >= 0 ? task.priority : "P3");
+  var titleVal = escapeHtml(snap ? snap.title : task.title);
+  var commentVal = escapeHtml(snap ? snap.comment : taskComment(task));
+  var topicVal = escapeHtml(snap ? snap.topic : task.topic);
+  var subtopicVal = escapeHtml(snap ? snap.subtopic : task.subtopic);
   li.className = "task editing";
   li.draggable = false;
   li.dataset.id = task.id;
   li.innerHTML = ""
     + "<div class='body'>"
     +   "<form class='edit-form'>"
-    +     "<input class='fi' name='title' value='" + escapeHtml(task.title) + "' required>"
-    +     "<input class='fi' name='comment' value='" + escapeHtml(taskComment(task)) + "' placeholder='Comment'>"
+    +     "<input class='fi' name='title' value='" + titleVal + "' required>"
+    +     "<input class='fi' name='comment' value='" + commentVal + "' placeholder='Comment'>"
     +     "<div class='edit-grid'>"
-    +       "<input class='fi' name='topic' value='" + escapeHtml(task.topic) + "' placeholder='Theme'>"
-    +       "<input class='fi' name='subtopic' value='" + escapeHtml(task.subtopic) + "' placeholder='Subtopic'>"
+    +       "<input class='fi' name='topic' value='" + topicVal + "' placeholder='Theme'>"
+    +       "<input class='fi' name='subtopic' value='" + subtopicVal + "' placeholder='Subtopic'>"
     +       "<select class='fi' name='priority'>"
-    +         "<option value='P1'" + (task.priority === "P1" ? " selected" : "") + ">P1</option>"
-    +         "<option value='P2'" + (task.priority === "P2" ? " selected" : "") + ">P2</option>"
-    +         "<option value='P3'" + (task.priority === "P3" ? " selected" : "") + ">P3</option>"
+    +         "<option value='P1'" + (priority === "P1" ? " selected" : "") + ">P1</option>"
+    +         "<option value='P2'" + (priority === "P2" ? " selected" : "") + ">P2</option>"
+    +         "<option value='P3'" + (priority === "P3" ? " selected" : "") + ">P3</option>"
     +       "</select>"
     +       "<div class='actions'>"
     +         "<button class='icon-btn' type='submit'>Save</button>"
@@ -648,12 +655,14 @@ function taskEditCard(task, li){
     task.priority = priority;
     touch(task);
     editingTaskId = null;
+    editFormSnapshot = null;
     save();
     render();
   });
 
   li.querySelector("[data-a='cancel']").addEventListener("click", function(){
     editingTaskId = null;
+    editFormSnapshot = null;
     render();
   });
 
@@ -661,6 +670,7 @@ function taskEditCard(task, li){
     if (e.key === "Escape") {
       e.preventDefault();
       editingTaskId = null;
+      editFormSnapshot = null;
       render();
     }
   });
@@ -781,6 +791,7 @@ function renderAreas(){
       + "<div class='topic-title'>"
       +   "<h3>" + escapeHtml(topic) + "</h3>"
       +   "<button class='collapse-btn' type='button' aria-expanded='" + (!collapsed) + "'>" + (collapsed ? "Show" : "Hide") + "</button>"
+      +   (topic !== "General" ? "<button class='collapse-btn' type='button' data-a='del-topic'>Delete</button>" : "")
       + "</div>"
       + "<div class='topic-count'>" + (collapsed ? "0" : total) + "/" + total + " visible</div>";
     header.querySelector(".collapse-btn").addEventListener("click", function(){
@@ -788,6 +799,17 @@ function renderAreas(){
       saveCollapsed();
       renderAreas();
     });
+    var delTopicBtn = header.querySelector("[data-a='del-topic']");
+    if (delTopicBtn) {
+      delTopicBtn.addEventListener("click", function(){
+        if (!confirm("Delete all tasks in '" + topic + "'?")) return;
+        S.tasks = S.tasks.filter(function(t){ return (t.topic || "General") !== topic; });
+        editingTaskId = null;
+        editFormSnapshot = null;
+        save();
+        render();
+      });
+    }
     topicWrap.appendChild(header);
 
     if (collapsed) {
@@ -813,21 +835,17 @@ function renderAreas(){
 }
 
 function renderQuickThemeOptions(){
-  var select = document.getElementById("quick-theme-select");
-  if (!select) return;
-  var current = select.value || "General";
+  var datalist = document.getElementById("theme-datalist");
+  if (!datalist) return;
   var themes = {};
   themes.General = true;
   S.tasks.forEach(function(task){ themes[task.topic || "General"] = true; });
-  select.innerHTML = "";
+  datalist.innerHTML = "";
   Object.keys(themes).sort().forEach(function(theme){
     var option = document.createElement("option");
     option.value = theme;
-    option.textContent = theme;
-    if (theme === current) option.selected = true;
-    select.appendChild(option);
+    datalist.appendChild(option);
   });
-  if (!themes[current]) select.value = "General";
 }
 
 function dateKey(date){
@@ -1330,7 +1348,22 @@ function hideToast(){
   toastTimer = null;
 }
 
+function captureEditForm(){
+  if (!editingTaskId) return;
+  var form = document.querySelector(".task.editing .edit-form");
+  if (!form) return;
+  editFormSnapshot = {
+    id: editingTaskId,
+    title: String(form.querySelector("[name='title']").value || "").trim(),
+    comment: String(form.querySelector("[name='comment']").value || "").trim(),
+    topic: String(form.querySelector("[name='topic']").value || "").trim(),
+    subtopic: String(form.querySelector("[name='subtopic']").value || "").trim(),
+    priority: String(form.querySelector("[name='priority']").value || "P2")
+  };
+}
+
 function render(){
+  captureEditForm();
   renderQuickThemeOptions();
   document.getElementById("data-atual").textContent = fmtDate();
   var st = stats();
